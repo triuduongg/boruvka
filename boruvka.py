@@ -203,7 +203,6 @@ class GraphDrawer:
 
     def run_boruvka(self):
         if not self.running:
-            # Run Boruvka algorithm and show MST
             self.running = True
             self.run_button.config(text="Stop")
 
@@ -224,106 +223,122 @@ class GraphDrawer:
                 graph[v1].append((v2, weight))
                 graph[v2].append((v1, weight))
 
-            # Boruvka's algorithm implementation
-            parent = {v: v for v in self.vertices}
+            # Find connected components using DFS
+            visited = set()
+            components = []
 
-            def find(u):
-                while parent[u] != u:
-                    parent[u] = parent[parent[u]]
-                    u = parent[u]
-                return u
+            def dfs(u, comp):
+                visited.add(u)
+                comp.append(u)
+                for v, _ in graph[u]:
+                    if v not in visited:
+                        dfs(v, comp)
 
-            def union(u, v):
-                ru, rv = find(u), find(v)
-                if ru != rv:
-                    parent[rv] = ru
-                    return True
-                return False
+            for vertex in self.vertices:
+                if vertex not in visited:
+                    comp = []
+                    dfs(vertex, comp)
+                    components.append(comp)
 
-            num_components = len(self.vertices)
-            mst_edges = []
-            total_weight = 0
+            # For each component, run Boruvka's MST and draw frame and label
+            self.component_frames = []
+            self.component_labels = []
 
-            while num_components > 1:
-                cheapest = {}
-                for u in self.vertices:
-                    cheapest[u] = None
+            for comp in components:
+                # Boruvka's algorithm for this component
+                parent = {v: v for v in comp}
 
-                for (u, v), (line_id, entry, entry_window) in self.edges.items():
+                def find(u):
+                    while parent[u] != u:
+                        parent[u] = parent[parent[u]]
+                        u = parent[u]
+                    return u
+
+                def union(u, v):
                     ru, rv = find(u), find(v)
                     if ru != rv:
-                        try:
-                            w = float(entry.get())
-                        except ValueError:
-                            messagebox.showerror("Error", f"Invalid edge weight between vertex {u} and {v}.")
-                            self.running = False
-                            self.run_button.config(text="Run")
-                            return
-                        if cheapest[ru] is None or cheapest[ru][2] > w:
-                            cheapest[ru] = (u, v, w)
-                        if cheapest[rv] is None or cheapest[rv][2] > w:
-                            cheapest[rv] = (u, v, w)
+                        parent[rv] = ru
+                        return True
+                    return False
 
-                union_happened = False
-                for u in self.vertices:
-                    if cheapest[u] is not None:
-                        u1, v1, w1 = cheapest[u]
-                        if union(u1, v1):
-                            mst_edges.append((u1, v1))
-                            total_weight += w1
-                            num_components -= 1
-                            union_happened = True
-                if not union_happened:
-                    break
+                num_components = len(comp)
+                mst_edges = []
+                total_weight = 0
 
-            # Highlight MST edges in red
-            for (u, v) in mst_edges:
-                edge_key = tuple(sorted((u, v)))
-                line_id, entry, entry_window = self.edges[edge_key]
-                self.canvas.itemconfig(line_id, fill="red")
+                while num_components > 1:
+                    cheapest = {u: None for u in comp}
 
-            # Remove previous frame and label if exist
-            if self.mst_frame_rect is not None:
-                self.canvas.delete(self.mst_frame_rect)
-                self.mst_frame_rect = None
-            if self.mst_frame_label is not None:
-                self.canvas.delete(self.mst_frame_label)
-                self.mst_frame_label = None
+                    for (u, v), (line_id, entry, entry_window) in self.edges.items():
+                        if u in comp and v in comp:
+                            ru, rv = find(u), find(v)
+                            if ru != rv:
+                                try:
+                                    w = float(entry.get())
+                                except ValueError:
+                                    messagebox.showerror("Error", f"Invalid edge weight between vertex {u} and {v}.")
+                                    self.running = False
+                                    self.run_button.config(text="Run")
+                                    return
+                                if cheapest[ru] is None or cheapest[ru][2] > w:
+                                    cheapest[ru] = (u, v, w)
+                                if cheapest[rv] is None or cheapest[rv][2] > w:
+                                    cheapest[rv] = (u, v, w)
 
-            # Calculate bounding box of all vertices with padding
-            if self.vertices:
-                xs = [pos[0] for pos in self.vertices.values()]
-                ys = [pos[1] for pos in self.vertices.values()]
+                    union_happened = False
+                    for u in comp:
+                        if cheapest[u] is not None:
+                            u1, v1, w1 = cheapest[u]
+                            if union(u1, v1):
+                                mst_edges.append((u1, v1))
+                                total_weight += w1
+                                num_components -= 1
+                                union_happened = True
+                    if not union_happened:
+                        break
+
+                # Highlight MST edges in red for this component
+                for (u, v) in mst_edges:
+                    edge_key = tuple(sorted((u, v)))
+                    line_id, entry, entry_window = self.edges[edge_key]
+                    self.canvas.itemconfig(line_id, fill="red")
+
+                # Calculate bounding box of vertices in this component
+                xs = [self.vertices[v][0] for v in comp]
+                ys = [self.vertices[v][1] for v in comp]
                 padding = 20
                 min_x, max_x = min(xs) - padding, max(xs) + padding
                 min_y, max_y = min(ys) - padding, max(ys) + padding
 
-                # Draw blue rectangle frame
-                self.mst_frame_rect = self.canvas.create_rectangle(
+                # Draw blue rectangle frame for this component
+                rect = self.canvas.create_rectangle(
                     min_x, min_y, max_x, max_y,
                     outline="blue", width=2
                 )
+                self.component_frames.append(rect)
 
                 # Draw total weight label on top of the frame
                 label_text = f"{total_weight:.2f}"
-                self.mst_frame_label = self.canvas.create_text(
+                label = self.canvas.create_text(
                     (min_x + max_x) / 2, min_y - 10,
                     text=label_text,
                     font=("Arial", 12, "bold"),
                     fill="blue"
                 )
+                self.component_labels.append(label)
         else:
             # Stop Boruvka mode: reset UI and enable editing
             self.running = False
             self.run_button.config(text="Run")
 
-            # Remove frame and label
-            if self.mst_frame_rect is not None:
-                self.canvas.delete(self.mst_frame_rect)
-                self.mst_frame_rect = None
-            if self.mst_frame_label is not None:
-                self.canvas.delete(self.mst_frame_label)
-                self.mst_frame_label = None
+            # Remove all component frames and labels
+            if hasattr(self, 'component_frames'):
+                for rect in self.component_frames:
+                    self.canvas.delete(rect)
+                self.component_frames = []
+            if hasattr(self, 'component_labels'):
+                for label in self.component_labels:
+                    self.canvas.delete(label)
+                self.component_labels = []
 
             # Reset all edges to black
             for (v1, v2), (line_id, entry, entry_window) in self.edges.items():
