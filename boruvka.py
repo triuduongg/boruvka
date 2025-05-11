@@ -24,6 +24,10 @@ class GraphDrawer:
         self.run_button = tk.Button(root, text="Run", command=self.run_boruvka)
         self.run_button.pack()
 
+        # Button to refresh graph
+        self.refresh_button = tk.Button(root, text="Refresh", command=self.refresh_graph)
+        self.refresh_button.pack()
+
         self.vertices = {}  # vertex_id: (x, y, circle_id, label_id)
         self.edges = {}     # (v1, v2): (line_id, entry_widget, entry_window)
         self.vertex_radius = 15
@@ -201,10 +205,42 @@ class GraphDrawer:
         dist_sq = (px - proj_x)**2 + (py - proj_y)**2
         return dist_sq <= tol*tol
 
+    def refresh_graph(self):
+        if self.running:
+            return
+        # Delete all vertices and their labels
+        for vertex in list(self.vertices.keys()):
+            x, y, circle_id, label_id = self.vertices[vertex]
+            self.canvas.delete(circle_id)
+            self.canvas.delete(label_id)
+        self.vertices.clear()
+
+        # Delete all edges and their widgets
+        for edge in list(self.edges.keys()):
+            line_id, entry, entry_window = self.edges[edge]
+            self.canvas.delete(line_id)
+            self.canvas.delete(entry_window)
+            entry.destroy()
+        self.edges.clear()
+
+        # Delete component frames and labels if any
+        if hasattr(self, 'component_frames'):
+            for rect in self.component_frames:
+                self.canvas.delete(rect)
+            self.component_frames = []
+        if hasattr(self, 'component_labels'):
+            for label in self.component_labels:
+                self.canvas.delete(label)
+            self.component_labels = []
+
+        # Reset vertex count
+        self.vertex_count = 0
+
     def run_boruvka(self):
         if not self.running:
             self.running = True
             self.run_button.config(text="Stop")
+            self.refresh_button.pack_forget()
 
             # Clear previous MST highlights
             for (v1, v2), (line_id, entry, entry_window) in self.edges.items():
@@ -219,6 +255,7 @@ class GraphDrawer:
                     messagebox.showerror("Error", f"Invalid edge weight between vertex {v1} and {v2}.")
                     self.running = False
                     self.run_button.config(text="Run")
+                    self.refresh_button.pack()
                     return
                 graph[v1].append((v2, weight))
                 graph[v2].append((v1, weight))
@@ -278,6 +315,7 @@ class GraphDrawer:
                                     messagebox.showerror("Error", f"Invalid edge weight between vertex {u} and {v}.")
                                     self.running = False
                                     self.run_button.config(text="Run")
+                                    self.refresh_button.pack()
                                     return
                                 if cheapest[ru] is None or cheapest[ru][2] > w:
                                     cheapest[ru] = (u, v, w)
@@ -329,6 +367,7 @@ class GraphDrawer:
             # Stop Boruvka mode: reset UI and enable editing
             self.running = False
             self.run_button.config(text="Run")
+            self.refresh_button.pack()
 
             # Remove all component frames and labels
             if hasattr(self, 'component_frames'):
