@@ -10,8 +10,15 @@ class GraphDrawer:
         self.canvas.pack()
 
         # Label to show MST total weight
-        self.mst_label = tk.Label(root, text="", font=("Arial", 12))
-        self.mst_label.pack()
+        # Remove the existing MST label below the canvas
+        # self.mst_label = tk.Label(root, text="", font=("Arial", 12))
+        # self.mst_label.pack()
+        self.mst_label = None
+        self.mst_frame_rect = None
+        self.mst_frame_label = None
+
+        # Running state
+        self.running = False
 
         # Button to run Boruvka simulation
         self.run_button = tk.Button(root, text="Run", command=self.run_boruvka)
@@ -32,6 +39,8 @@ class GraphDrawer:
 
     def left_click(self, event):
         # Check if clicked on a vertex
+        if self.running:
+            return
         vertex = self.find_vertex(event.x, event.y)
         if vertex is None:
             # Clicked empty space: create new vertex
@@ -41,6 +50,8 @@ class GraphDrawer:
             self.dragging_vertex = vertex
 
     def left_drag(self, event):
+        if self.running:
+            return
         if self.dragging_vertex is not None:
             # Draw temporary line from dragging_vertex to current mouse position
             x0, y0, _, _ = self.vertices[self.dragging_vertex]
@@ -49,6 +60,8 @@ class GraphDrawer:
             self.temp_line = self.canvas.create_line(x0, y0, event.x, event.y, fill="gray", dash=(4, 2))
 
     def left_release(self, event):
+        if self.running:
+            return
         if self.dragging_vertex is not None:
             # Check if released on another vertex
             target_vertex = self.find_vertex(event.x, event.y)
@@ -62,6 +75,8 @@ class GraphDrawer:
             self.dragging_vertex = None
 
     def right_click(self, event):
+        if self.running:
+            return
         # Check if clicked on vertex
         vertex = self.find_vertex(event.x, event.y)
         if vertex is not None:
@@ -187,79 +202,132 @@ class GraphDrawer:
         return dist_sq <= tol*tol
 
     def run_boruvka(self):
-        # Clear previous MST highlights
-        for (v1, v2), (line_id, entry, entry_window) in self.edges.items():
-            self.canvas.itemconfig(line_id, fill="black")
+        if not self.running:
+            # Run Boruvka algorithm and show MST
+            self.running = True
+            self.run_button.config(text="Stop")
 
-        # Build graph adjacency list with weights
-        graph = {v: [] for v in self.vertices}
-        for (v1, v2), (line_id, entry, entry_window) in self.edges.items():
-            try:
-                weight = float(entry.get())
-            except ValueError:
-                messagebox.showerror("Error", f"Invalid edge weight between vertex {v1} and {v2}.")
-                return
-            graph[v1].append((v2, weight))
-            graph[v2].append((v1, weight))
+            # Clear previous MST highlights
+            for (v1, v2), (line_id, entry, entry_window) in self.edges.items():
+                self.canvas.itemconfig(line_id, fill="black")
 
-        # Boruvka's algorithm implementation
-        parent = {v: v for v in self.vertices}
+            # Build graph adjacency list with weights
+            graph = {v: [] for v in self.vertices}
+            for (v1, v2), (line_id, entry, entry_window) in self.edges.items():
+                try:
+                    weight = float(entry.get())
+                except ValueError:
+                    messagebox.showerror("Error", f"Invalid edge weight between vertex {v1} and {v2}.")
+                    self.running = False
+                    self.run_button.config(text="Run")
+                    return
+                graph[v1].append((v2, weight))
+                graph[v2].append((v1, weight))
 
-        def find(u):
-            while parent[u] != u:
-                parent[u] = parent[parent[u]]
-                u = parent[u]
-            return u
+            # Boruvka's algorithm implementation
+            parent = {v: v for v in self.vertices}
 
-        def union(u, v):
-            ru, rv = find(u), find(v)
-            if ru != rv:
-                parent[rv] = ru
-                return True
-            return False
+            def find(u):
+                while parent[u] != u:
+                    parent[u] = parent[parent[u]]
+                    u = parent[u]
+                return u
 
-        num_components = len(self.vertices)
-        mst_edges = []
-        total_weight = 0
-
-        while num_components > 1:
-            cheapest = {}
-            for u in self.vertices:
-                cheapest[u] = None
-
-            for (u, v), (line_id, entry, entry_window) in self.edges.items():
+            def union(u, v):
                 ru, rv = find(u), find(v)
                 if ru != rv:
-                    try:
-                        w = float(entry.get())
-                    except ValueError:
-                        messagebox.showerror("Error", f"Invalid edge weight between vertex {u} and {v}.")
-                        return
-                    if cheapest[ru] is None or cheapest[ru][2] > w:
-                        cheapest[ru] = (u, v, w)
-                    if cheapest[rv] is None or cheapest[rv][2] > w:
-                        cheapest[rv] = (u, v, w)
+                    parent[rv] = ru
+                    return True
+                return False
 
-            union_happened = False
-            for u in self.vertices:
-                if cheapest[u] is not None:
-                    u1, v1, w1 = cheapest[u]
-                    if union(u1, v1):
-                        mst_edges.append((u1, v1))
-                        total_weight += w1
-                        num_components -= 1
-                        union_happened = True
-            if not union_happened:
-                break
+            num_components = len(self.vertices)
+            mst_edges = []
+            total_weight = 0
 
-        # Highlight MST edges in red
-        for (u, v) in mst_edges:
-            edge_key = tuple(sorted((u, v)))
-            line_id, entry, entry_window = self.edges[edge_key]
-            self.canvas.itemconfig(line_id, fill="red")
+            while num_components > 1:
+                cheapest = {}
+                for u in self.vertices:
+                    cheapest[u] = None
 
-        # Show total weight
-        self.mst_label.config(text=f"Total weight of minimum spanning tree: {total_weight:.2f}")
+                for (u, v), (line_id, entry, entry_window) in self.edges.items():
+                    ru, rv = find(u), find(v)
+                    if ru != rv:
+                        try:
+                            w = float(entry.get())
+                        except ValueError:
+                            messagebox.showerror("Error", f"Invalid edge weight between vertex {u} and {v}.")
+                            self.running = False
+                            self.run_button.config(text="Run")
+                            return
+                        if cheapest[ru] is None or cheapest[ru][2] > w:
+                            cheapest[ru] = (u, v, w)
+                        if cheapest[rv] is None or cheapest[rv][2] > w:
+                            cheapest[rv] = (u, v, w)
+
+                union_happened = False
+                for u in self.vertices:
+                    if cheapest[u] is not None:
+                        u1, v1, w1 = cheapest[u]
+                        if union(u1, v1):
+                            mst_edges.append((u1, v1))
+                            total_weight += w1
+                            num_components -= 1
+                            union_happened = True
+                if not union_happened:
+                    break
+
+            # Highlight MST edges in red
+            for (u, v) in mst_edges:
+                edge_key = tuple(sorted((u, v)))
+                line_id, entry, entry_window = self.edges[edge_key]
+                self.canvas.itemconfig(line_id, fill="red")
+
+            # Remove previous frame and label if exist
+            if self.mst_frame_rect is not None:
+                self.canvas.delete(self.mst_frame_rect)
+                self.mst_frame_rect = None
+            if self.mst_frame_label is not None:
+                self.canvas.delete(self.mst_frame_label)
+                self.mst_frame_label = None
+
+            # Calculate bounding box of all vertices with padding
+            if self.vertices:
+                xs = [pos[0] for pos in self.vertices.values()]
+                ys = [pos[1] for pos in self.vertices.values()]
+                padding = 20
+                min_x, max_x = min(xs) - padding, max(xs) + padding
+                min_y, max_y = min(ys) - padding, max(ys) + padding
+
+                # Draw blue rectangle frame
+                self.mst_frame_rect = self.canvas.create_rectangle(
+                    min_x, min_y, max_x, max_y,
+                    outline="blue", width=2
+                )
+
+                # Draw total weight label on top of the frame
+                label_text = f"{total_weight:.2f}"
+                self.mst_frame_label = self.canvas.create_text(
+                    (min_x + max_x) / 2, min_y - 10,
+                    text=label_text,
+                    font=("Arial", 12, "bold"),
+                    fill="blue"
+                )
+        else:
+            # Stop Boruvka mode: reset UI and enable editing
+            self.running = False
+            self.run_button.config(text="Run")
+
+            # Remove frame and label
+            if self.mst_frame_rect is not None:
+                self.canvas.delete(self.mst_frame_rect)
+                self.mst_frame_rect = None
+            if self.mst_frame_label is not None:
+                self.canvas.delete(self.mst_frame_label)
+                self.mst_frame_label = None
+
+            # Reset all edges to black
+            for (v1, v2), (line_id, entry, entry_window) in self.edges.items():
+                self.canvas.itemconfig(line_id, fill="black")
 
 if __name__ == "__main__":
     root = tk.Tk()
