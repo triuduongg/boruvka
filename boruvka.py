@@ -242,6 +242,10 @@ class GraphDrawer:
             self.run_button.config(text="Stop")
             self.refresh_button.pack_forget()
 
+            # Disable all edge weight entries to prevent editing while running
+            for (v1, v2), (line_id, entry, entry_window) in self.edges.items():
+                entry.config(state='disabled')
+
             # Clear previous MST highlights
             for (v1, v2), (line_id, entry, entry_window) in self.edges.items():
                 self.canvas.itemconfig(line_id, fill="black")
@@ -256,6 +260,9 @@ class GraphDrawer:
                     self.running = False
                     self.run_button.config(text="Run")
                     self.refresh_button.pack()
+                    # Re-enable all edge weight entries on error
+                    for (vv1, vv2), (ll_id, ent, ent_win) in self.edges.items():
+                        ent.config(state='normal')
                     return
                 graph[v1].append((v2, weight))
                 graph[v2].append((v1, weight))
@@ -316,6 +323,9 @@ class GraphDrawer:
                                     self.running = False
                                     self.run_button.config(text="Run")
                                     self.refresh_button.pack()
+                                    # Re-enable all edge weight entries on error
+                                    for (vv1, vv2), (ll_id, ent, ent_win) in self.edges.items():
+                                        ent.config(state='normal')
                                     return
                                 if cheapest[ru] is None or cheapest[ru][2] > w:
                                     cheapest[ru] = (u, v, w)
@@ -382,6 +392,7 @@ class GraphDrawer:
             # Reset all edges to black
             for (v1, v2), (line_id, entry, entry_window) in self.edges.items():
                 self.canvas.itemconfig(line_id, fill="black")
+                entry.config(state='normal')
 
 if __name__ == "__main__":
     root = tk.Tk()
